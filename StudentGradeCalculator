@@ -1,0 +1,220 @@
+# Подключение пространства имен для использования Windows Forms
+Add-Type -AssemblyName "System.Windows.Forms"
+# Добавление дополнительных пространств имен, включая обработку файлов и работу с Excel и Word
+Add-Type -TypeDefinition @"
+using System;
+using System.Windows.Forms;
+using System.IO;
+using Microsoft.Office.Interop.Word;
+using Microsoft.Office.Interop.Excel;
+"@ -Language CSharp
+
+# Создание формы, в которой будет происходить взаимодействие с пользователем
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Student Grade Calculator"  # Название окна
+$form.Width = 500  # Ширина окна
+$form.Height = 420  # Высота окна
+
+# Кнопка для выбора файла
+$btnSelectFile = New-Object System.Windows.Forms.Button
+$btnSelectFile.Text = "Select File"  # Текст на кнопке
+$btnSelectFile.Width = 100  # Ширина кнопки
+$btnSelectFile.Height = 30  # Высота кнопки
+$btnSelectFile.Top = 20  # Позиция сверху
+$btnSelectFile.Left = 20  # Позиция слева
+$form.Controls.Add($btnSelectFile)  # Добавление кнопки на форму
+
+# Текстовое поле для отображения пути к выбранному файлу
+$txtFilePath = New-Object System.Windows.Forms.TextBox
+$txtFilePath.Width = 300  # Ширина поля
+$txtFilePath.Top = 20  # Позиция сверху
+$txtFilePath.Left = 140  # Позиция слева
+$form.Controls.Add($txtFilePath)  # Добавление поля на форму
+
+# Кнопка для анализа данных
+$btnAnalyze = New-Object System.Windows.Forms.Button
+$btnAnalyze.Text = "Analyze"  # Текст на кнопке
+$btnAnalyze.Width = 100  # Ширина кнопки
+$btnAnalyze.Height = 30  # Высота кнопки
+$btnAnalyze.Top = 60  # Позиция сверху
+$btnAnalyze.Left = 20  # Позиция слева
+$form.Controls.Add($btnAnalyze)  # Добавление кнопки на форму
+
+# Кнопка для очистки результатов
+$btnClear = New-Object System.Windows.Forms.Button
+$btnClear.Text = "Clear Results"  # Текст на кнопке
+$btnClear.Width = 100  # Ширина кнопки
+$btnClear.Height = 30  # Высота кнопки
+$btnClear.Top = 60  # Позиция сверху
+$btnClear.Left = $btnAnalyze.Left + $btnAnalyze.Width + 240  # Позиция справа от кнопки "Analyze"
+$form.Controls.Add($btnClear)  # Добавление кнопки на форму
+
+# Мультистрочное текстовое поле для отображения результатов
+$txtResults = New-Object System.Windows.Forms.TextBox
+$txtResults.Width = 440  # Ширина поля
+$txtResults.Height = 200  # Высота поля
+$txtResults.Top = 100  # Позиция сверху
+$txtResults.Left = 20  # Позиция слева
+$txtResults.Multiline = $true  # Многострочное поле
+$txtResults.ScrollBars = 'Vertical'  # Вертикальные полосы прокрутки
+$form.Controls.Add($txtResults)  # Добавление текстового поля на форму
+
+# Кнопка для сохранения результатов в файл Word
+$btnSaveWord = New-Object System.Windows.Forms.Button
+$btnSaveWord.Text = "Save as Word"  # Текст на кнопке
+$btnSaveWord.Width = 120  # Ширина кнопки
+$btnSaveWord.Height = 30  # Высота кнопки
+$btnSaveWord.Top = $txtResults.Top + $txtResults.Height + 20  # Позиция под текстовым полем
+$btnSaveWord.Left = ($form.ClientSize.Width - $btnSaveWord.Width) / 2  # Центрирование кнопки
+$form.Controls.Add($btnSaveWord)  # Добавление кнопки на форму
+
+# Лейбл для водяного знака (информация о создателе)
+$watermarkLabel = New-Object System.Windows.Forms.Label
+$watermarkLabel.Text = "ff.victus.0000@gmail.com"  # Текст водяного знака
+$watermarkLabel.ForeColor = [System.Drawing.Color]::LightGray  # Цвет текста
+$watermarkLabel.Font = New-Object System.Drawing.Font("Arial", 8, [System.Drawing.FontStyle]::Italic)  # Шрифт
+$watermarkLabel.AutoSize = $true  # Автоматическая настройка размера
+$watermarkLabel.Left = 20  # Позиция слева
+$watermarkLabel.Top = $form.ClientSize.Height - 20  # Позиция снизу
+$form.Controls.Add($watermarkLabel)  # Добавление водяного знака на форму
+
+# Функция для определения оценки по числовой отметке
+function GetGrade {
+    param ($mark)
+    if ($mark -ge 90) { return "A - Excellent" }
+    elseif ($mark -ge 70) { return "B - Good" }
+    elseif ($mark -ge 60) { return "C - Average" }
+    elseif ($mark -ge 40) { return "D - Pass" }
+    elseif ($mark -ge 20) { return "E - Weak" }
+    elseif ($mark -ge 10) { return "F - Fail" }
+    else { return "F - Very Poor" }
+}
+
+# Обработчик выбора файла
+$btnSelectFile.Add_Click({
+    $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    $openFileDialog.Filter = "Text Files (*.txt)|*.txt|Excel Files (*.xlsx)|*.xlsx|All Files (*.*)|*.*"
+    
+    # Открытие диалогового окна для выбора файла
+    if ($openFileDialog.ShowDialog() -eq 'OK') {
+        $txtFilePath.Text = $openFileDialog.FileName  # Отображение пути в текстовом поле
+    }
+})
+
+# Обработчик анализа
+$btnAnalyze.Add_Click({
+    $filePath = $txtFilePath.Text
+
+    # Проверка существования файла
+    if (-not (Test-Path $filePath)) {
+        [System.Windows.Forms.MessageBox]::Show("File does not exist at the specified path.")
+        return
+    }
+
+    $results = @()  # Массив для хранения результатов
+
+    # Обработка Excel файла
+    if ($filePath.EndsWith(".xlsx")) {
+        $excelApp = New-Object -ComObject Excel.Application
+        $excelApp.Visible = $false  # Excel не будет отображаться
+        $workbook = $excelApp.Workbooks.Open($filePath)  # Открытие файла
+        $sheet = $workbook.Sheets.Item(1)  # Использование первого листа
+        $usedRange = $sheet.UsedRange
+        $rows = $usedRange.Rows
+
+        # Отображение информации о начале анализа
+        $txtResults.AppendText("------ Analysis for file: $filePath ------`n")
+        $txtResults.AppendText("Analysis started at: $(Get-Date)`n")
+        $txtResults.AppendText("`n")
+
+        foreach ($row in $rows) {
+            $studentName = $row.Cells.Item(1).Value2  # Имя студента
+            $score = $row.Cells.Item(2).Value2  # Оценка студента
+
+            if (-not $studentName -or -not $score) {
+                continue  # Пропуск строк с ошибочными данными
+            }
+
+            $grade = GetGrade $score  # Определение оценки
+            $results += [PSCustomObject]@{
+                StudentName = $studentName
+                Score       = $score
+                Grade       = $grade
+            }
+        }
+
+        # Закрытие Excel приложения
+        $workbook.Close()
+        $excelApp.Quit()
+
+    } else {
+        # Обработка текстового файла
+        $fileContent = Get-Content -Path $filePath
+        $txtResults.AppendText("------ Analysis for file: $filePath ------`n")
+        $txtResults.AppendText("Analysis started at: $(Get-Date)`n")
+        $txtResults.AppendText("`n")
+
+        foreach ($line in $fileContent) {
+            $parts = $line -split '\s+'  # Разделение строки по пробелам
+
+            if ($parts.Length -lt 2) {
+                $txtResults.AppendText("Invalid line format: $line. Skipping.`n")
+                continue  # Пропуск некорректных строк
+            }
+
+            $score = ($parts[-1] -replace '[^\d.]', '').Trim()  # Получение оценки
+            $name = ($parts[0..($parts.Length - 2)] -join ' ').Trim()  # Получение имени студента
+            $scoreValue = [float]::TryParse($score, [ref]$null)  # Преобразование строки в число
+
+            if (-not $scoreValue) {
+                $txtResults.AppendText("Invalid score for $name. Skipping.`n")
+                continue  # Пропуск некорректных данных
+            }
+
+            $score = [float]$score
+            $grade = GetGrade $score  # Определение оценки
+
+            $results += [PSCustomObject]@{
+                StudentName = $name
+                Score       = $score
+                Grade       = $grade
+            }
+        }
+    }
+
+    # Сортировка результатов по имени студента
+    $results = $results | Sort-Object -Property StudentName
+
+    # Отображение результатов анализа
+    $txtResults.AppendText("Student Grade Results:`n")
+    $results | ForEach-Object {
+        $txtResults.AppendText("$($_.StudentName) - $($_.Score) - $($_.Grade)`n")
+    }
+    $txtResults.AppendText("`n")
+})
+
+# Обработчик очистки результатов
+$btnClear.Add_Click({
+    $txtResults.Clear()  # Очистка текстового поля с результатами
+    $txtFilePath.Clear()  # Очистка текстового поля с путем к файлу
+    $txtResults.AppendText("Results cleared.`n")  # Сообщение об очистке
+})
+
+# Обработчик сохранения результатов в файл Word
+$btnSaveWord.Add_Click({
+    $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+    $saveFileDialog.Filter = "Word Files (*.docx)|*.docx"
+    if ($saveFileDialog.ShowDialog() -eq 'OK') {
+        $wordApp = New-Object -ComObject Word.Application
+        $wordApp.Visible = $false  # Word не будет отображаться
+        $document = $wordApp.Documents.Add()
+        $document.Content.Text = $txtResults.Text  # Вставка результатов в документ
+        $document.SaveAs([ref]$saveFileDialog.FileName)  # Сохранение документа
+        $document.Close()
+        $wordApp.Quit()
+        [System.Windows.Forms.MessageBox]::Show("Report saved as Word file.")  # Сообщение об успешном сохранении
+    }
+})
+
+# Запуск формы (отображение окна)
+$form.ShowDialog()
